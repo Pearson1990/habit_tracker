@@ -1,5 +1,5 @@
 /* Offline support for the Habit Tracker. Bump CACHE when you change the app files. */
-const CACHE = "habit-tracker-v1";
+const CACHE = "habit-tracker-v3";
 const SHELL = ["./", "index.html", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
 self.addEventListener("install", (e) => {

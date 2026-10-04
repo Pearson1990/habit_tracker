@@ -212,6 +212,30 @@
   .report-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
   .report-actions .btn { flex: 1 1 auto; min-height: 46px; padding: 0 14px; }
   .btn.ghost { background: var(--empty); color: var(--ink); }
+  .addcard.collapsed { background: none; border: 0; padding: 0; }
+  .add-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .add-actions .btn { flex: 1; }
+  .habit { padding: 0; }
+  .habit-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; }
+  .head-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: none; border: 0; text-align: left; padding: 8px 4px; min-height: 52px; }
+  .head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .hname { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hsub { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .status { flex: none; font-size: 14px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .status b { font-size: 18px; color: var(--ink); font-weight: 800; }
+  .status.met b { color: var(--c); }
+  .chev { flex: none; width: 20px; height: 20px; color: var(--muted); transition: transform .2s ease; }
+  .habit.open .chev { transform: rotate(180deg); }
+  .swatch.lead { width: 12px; height: 12px; border-radius: 4px; background: var(--c); flex: none; margin: 0 2px 0 4px; }
+  .qk { flex: none; width: 42px; height: 42px; border-radius: 50%; border: 2px solid var(--c); background: transparent; color: #fff; display: grid; place-items: center; padding: 0; }
+  .qk svg { display: none; width: 55%; height: 55%; }
+  .qk.done { background: var(--c); }
+  .qk.done svg { display: block; }
+  .qk.rest:not(.done) { opacity: .45; border-style: dashed; }
+  .habit-body { padding: 2px 14px 12px; }
+  .streak-line { font-size: 14px; color: var(--muted); }
+  .streak-line b { color: var(--ink); }
+  @media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
   .sub-note.stale { color: var(--danger); font-weight: 500; }
   .sheet-actions.col { flex-direction: column; align-items: stretch; gap: 10px; }
   .seg.three { grid-template-columns: repeat(3, 1fr); }
@@ -302,7 +326,9 @@
 
   <main id="list"></main>
 
-  <section class="addcard" id="addcard">
+  <section class="addcard collapsed" id="addcard">
+    <button class="btn full" id="addToggle" aria-expanded="false" aria-controls="addForm" style="margin-top: 0">+ Add habit</button>
+    <div id="addForm" hidden>
     <h2>New habit</h2>
     <input id="newName" type="text" placeholder="Name, like “Drink water”" maxlength="40" autocomplete="off" aria-label="New habit name">
     <div class="seg" role="group" aria-label="Habit type" id="newSeg">
@@ -311,7 +337,11 @@
     </div>
     <div class="goalfields" id="newPeriod" data-p="new"></div>
     <div class="goalfields" id="newGoal" data-p="new" hidden></div>
-    <button class="btn full" id="addBtn">Add habit</button>
+    <div class="add-actions">
+      <button class="btn ghost" id="addCancel">Cancel</button>
+      <button class="btn" id="addBtn">Add</button>
+    </div>
+    </div>
   </section>
   </div>
 
@@ -481,6 +511,7 @@
   var tab = "today", range = "week", offset = 0;
   var newPeriod = "daily", editPeriod = "daily";
   var psub = "overview", win = 30, repOffset = 0;
+  var openHabits = {};
   var newSched = ALL_DAYS.slice(), editSched = ALL_DAYS.slice();
 
   /* ---------- Helpers ---------- */
@@ -743,15 +774,31 @@
         var notePreview = todayNote ? '<p class="note-preview">“' + esc(todayNote.length > 90 ? todayNote.slice(0, 90) + "…" : todayNote) + "”</p>" : "";
         var schedLine = "";
         if (h.period === "daily" && h.days.length < 7) schedLine = '<p class="sched">' + esc(schedLabel(h.days)) + (sched(h, tk) ? "" : " · rest day today") + "</p>";
-        return '<section class="habit" style="--c:' + h.color + '">' +
-          '<div class="habit-top">' +
-          '<button class="name-btn" data-edit="' + h.id + '" aria-label="Edit ' + esc(h.name) + '"><span class="swatch"></span><span class="t">' + esc(h.name) + "</span></button>" +
-          '<button class="edit-btn" data-edit="' + h.id + '" aria-label="Edit options for ' + esc(h.name) + '">Edit</button>' +
-          '<div class="streak"><b>' + s + "</b>" + periodUnit(h) + " streak</div></div>" +
-          schedLine +
+        var open = !!openHabits[h.id];
+        var doneToday = isDone(h, tk);
+        var subBits = [s ? s + "-" + periodUnit(h) + " streak" : "No streak yet"];
+        if (h.period === "daily" && h.days.length < 7) subBits.push(schedLabel(h.days) + (sched(h, tk) ? "" : " · rest day"));
+        var status = "";
+        if (h.period === "daily") {
+          if (h.goal) { var ta = amount(h, tk); status = '<span class="status' + (ta >= h.target ? " met" : "") + '"><b>' + fmt(ta) + "</b> / " + fmt(h.target) + esc(unitText(h)) + "</span>"; }
+        } else {
+          var pr = periodValue(h, periodRange(h, t));
+          status = '<span class="status' + (pr >= h.target ? " met" : "") + '"><b>' + fmt(pr) + "</b> / " + fmt(h.target) + esc(h.goal ? unitText(h) : (h.target === 1 ? " day" : " days")) + "</span>";
+        }
+        var marker = (h.period === "daily" && !h.goal)
+          ? '<button class="qk' + (doneToday ? " done" : "") + (sched(h, tk) ? "" : " rest") + '" data-qk="' + h.id + '" aria-pressed="' + doneToday + '" aria-label="Mark ' + esc(h.name) + ' done today">' + CHECK + "</button>"
+          : '<span class="swatch lead"></span>';
+        return '<section class="habit' + (open ? " open" : "") + '" style="--c:' + h.color + '">' +
+          '<div class="habit-head">' + marker +
+          '<button class="head-btn" data-toggle="' + h.id + '" aria-expanded="' + open + '" aria-controls="hb-' + h.id + '">' +
+          '<span class="head-text"><span class="hname">' + esc(h.name) + '</span><span class="hsub">' + esc(subBits.join(" · ")) + "</span></span>" +
+          status + '<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>' +
+          '<div class="habit-body" id="hb-' + h.id + '"' + (open ? "" : " hidden") + ">" +
+          '<div class="habit-top"><div class="streak-line">Best ' + periodUnit(h) + " streak: <b>" + bestStreak(h) + '</b></div>' +
+          '<button class="edit-btn" data-edit="' + h.id + '" aria-label="Edit options for ' + esc(h.name) + '">Edit</button></div>' +
           goalRow +
           '<div class="week">' + cells + "</div>" +
-          '<div class="card-foot"><p class="week-count">' + (h.period === "daily" ? (h.days.length < 7 ? days.filter(function (d) { return sched(h, dkey(d)) && isDone(h, dkey(d)); }).length + " of " + days.filter(function (d) { return sched(h, dkey(d)); }).length + " scheduled days " : weekDone + " of 7 days ") + (h.goal ? "goal met" : "done") + " this week" : weekDone + " of the last 7 days logged") + '</p><button class="note-btn" data-notes="' + h.id + '">' + noteLabel + "</button></div>" + notePreview + "</section>";
+          '<div class="card-foot"><p class="week-count">' + (h.period === "daily" ? (h.days.length < 7 ? days.filter(function (d) { return sched(h, dkey(d)) && isDone(h, dkey(d)); }).length + " of " + days.filter(function (d) { return sched(h, dkey(d)); }).length + " scheduled days " : weekDone + " of 7 days ") + (h.goal ? "goal met" : "done") + " this week" : weekDone + " of the last 7 days logged") + '</p><button class="note-btn" data-notes="' + h.id + '">' + noteLabel + "</button></div>"  + notePreview + "</div></section>";
       }).join("");
     }
     byId("list").innerHTML = html;
@@ -871,6 +918,27 @@
 
   /* ---------- Add habit ---------- */
   var newName = byId("newName");
+  function resetNewForm() {
+    newName.value = ""; byId("newUnit").value = ""; byId("newStep").value = "1";
+    delete byId("newTarget").dataset.touched; delete byId("newDays").dataset.touched;
+    newMode = "check"; newPeriod = "daily"; newSched = ALL_DAYS.slice();
+    byId("newTarget").value = "8"; byId("newDays").value = "3";
+    updateFields("new");
+  }
+  function expandAdd() {
+    byId("addcard").classList.remove("collapsed");
+    byId("addToggle").hidden = true;
+    byId("addToggle").setAttribute("aria-expanded", "true");
+    byId("addForm").hidden = false;
+    newName.focus();
+    try { byId("addcard").scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch (e) {}
+  }
+  function collapseAdd() {
+    byId("addForm").hidden = true;
+    byId("addToggle").hidden = false;
+    byId("addToggle").setAttribute("aria-expanded", "false");
+    byId("addcard").classList.add("collapsed");
+  }
   function submitNew() {
     var goal = newMode === "goal", per = newPeriod;
     var target = goal ? posNum(byId("newTarget").value, 1) : (per === "daily" ? 1 : posInt(byId("newDays").value, 1));
@@ -879,13 +947,11 @@
       unit: byId("newUnit").value.trim(), step: posNum(byId("newStep").value, 1)
     });
     if (!ok) { newName.focus(); return; }
-    newName.value = ""; byId("newUnit").value = ""; byId("newStep").value = "1";
-    delete byId("newTarget").dataset.touched; delete byId("newDays").dataset.touched;
-    newMode = "check"; newPeriod = "daily"; newSched = ALL_DAYS.slice();
-    byId("newTarget").value = "8"; byId("newDays").value = "3";
-    updateFields("new");
-    newName.focus();
+    resetNewForm();
+    collapseAdd();
   }
+  byId("addToggle").addEventListener("click", expandAdd);
+  byId("addCancel").addEventListener("click", function () { resetNewForm(); collapseAdd(); });
   byId("addBtn").addEventListener("click", submitNew);
   newName.addEventListener("keydown", function (e) { if (e.key === "Enter") submitNew(); });
 
@@ -1023,6 +1089,7 @@
 
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
+    if (!byId("addForm").hidden && !document.querySelector(".overlay.open")) { resetNewForm(); collapseAdd(); return; }
     if (importOverlay.classList.contains("open")) closeImport(); else if (noting) closeNotes(); else if (logging) closeLog(); else if (editingId) closeSheet();
   });
 
@@ -1073,6 +1140,11 @@
   });
 
   /* ---------- Main list events ---------- */
+  function toggleOpen(id) {
+    openHabits[id] = !openHabits[id];
+    render();
+    try { var b = byId("list").querySelector('[data-toggle="' + id + '"]'); if (b && b.focus) b.focus(); } catch (e) {}
+  }
   function addCustom(h, inp) {
     var v = parseFloat(inp.value);
     if (!h || !(v > 0)) { if (inp.focus) inp.focus(); return; }
@@ -1085,6 +1157,10 @@
     if (id) addCustom(find(id), e.target);
   });
   byId("list").addEventListener("click", function (e) {
+    var tg = e.target.closest("[data-toggle]");
+    if (tg) { toggleOpen(tg.getAttribute("data-toggle")); return; }
+    var qk = e.target.closest("[data-qk]");
+    if (qk) { toggle(qk.getAttribute("data-qk"), dkey(today())); return; }
     var nb = e.target.closest("[data-notes]");
     if (nb) { openNotes(nb.getAttribute("data-notes")); return; }
     var am = e.target.closest("[data-addamt]");
